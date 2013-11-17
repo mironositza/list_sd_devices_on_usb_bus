@@ -34,11 +34,14 @@
 use 5.012; # so readdir assigns to $_ in a lone while test
 use File::Slurp; # yum install perl-File-Slurp.noarch
 
-my $TEXT          = "text";
-my $ORIG          = "orig";
-my $DEVICE_DIR    = "devicedir";
-my $SD_DEVICE     = "sddevice";
-my $SD_DEVICE_DIR = "sddevicedir";
+my $TEXT           = "text";
+my $ORIG           = "orig";
+my $DEVICE_DIR     = "devicedir";
+my $SD_DEVICE      = "sddevice";
+my $SD_DEVICE_DESC = "sddevicedesc";
+my $SD_DEVICE_DIR  = "sddevicedir";
+my $BLOCK_SIZE     = 512;
+my $DEVICE_SIZE    = "devicesize";
 
 # List devices by checking "sys" filesystem; the retrieved stuff will
 # be put into a sortable structure, which is a "tree of hashes", the
@@ -67,25 +70,24 @@ sub slurpUsbDevices {
    #
    # So let's open the directory
    #
-   my $success = opendir(my $dh,$where);
-   if (!$success) {
-      print STDERR "Could not open directory '$where' -- exiting: $!\n";
-      exit 1
+   my @entries;
+   {
+      my $success = opendir(my $dh,$where);
+      if (!$success) {
+         print STDERR "Could not open directory '$where' -- exiting: $!\n";
+         exit 1
+      }
+      @entries = grep { !/^(\.)|(\.\.)|(usb\d+)$/ } readdir($dh);
+      closedir($dh);
    }
    #
    # Read directory entries one by one; see the Linux USB FAQ at
    # http://www.linux-usb.org/FAQ.html for the format of the filenames
    # (actually symlinks) in that directory
    #
-   while (my $curEntry = readdir($dh)) {
+   for my $curEntry (@entries) {
       #
-      # Skip the directory entries and the USB controller entries
-      #
-      if ($curEntry eq "." || $curEntry eq ".." || $curEntry =~ /^usb\d+$/) {
-         next      
-      }
-      #
-      # Otherwise, take the string B-P1.P2.P3:CONFIG:IF apart; interprete the
+      # Take the string B-P1.P2.P3:CONFIG:IF apart; interprete the
       # elements as numbers not as strings
       #
       if ($curEntry =~ /^(\d+)-([\d\.]+)(:.*)?$/) {
@@ -146,29 +148,35 @@ sub slurpUsbDevices {
             #
             # Add a text into $curHash under a key that will always come first when one sorts the
             # hash trivially - by using the key ""
-            #                 
-            my $jointure = join(' -> port ',@portPath); 
-            my $text = "bus $bus -> port $jointure";
-            if (defined($config)) {
-               $text .= " -> config $config -> interface $interface"
+            #
+            my $text;
+            {                 
+               my $jointure = join(' -> port ',@portPath); 
+               $text = "bus $bus -> port $jointure";
+               if (defined($config)) {
+                  $text .= " -> config $config -> interface $interface"
+               }
+            }
+            #
+            # The "curEntry" is a symlink to points to some entry under /sys/devices - resolve!
+            #    
+            my $theDir;
+            {
+               my $theLink = $where . "/" . $curEntry;
+               $theDir  = `/bin/readlink -e '${theLink}'`;
+               if ($? != 0) {
+                  print STDERR "Could not readlink the link '$theLink' -- exiting\n";
+                  exit 1
+               }
+               chomp $theDir;
+               if (! -d $theDir) {
+                  print STDERR "The link '$theLink' does not point to a proper directory '$theDir' -- exiting\n";
+                  exit 1
+               } 
             }
             if (exists $$curHash{""}) {
                print STDERR "Naming clash; already have a text entry for '$curEntry'\n";
             } 
-            #
-            # The "curEntry" is a symlink to points to some entry under /sys/devices - resolve!
-            #
-            my $theLink = $where . "/" . $curEntry;
-            my $theDir  = `/bin/readlink -e '${theLink}'`;
-            if ($? != 0) {
-               print STDERR "Could not readlink the link '$theLink' -- exiting\n";
-               exit 1
-            }
-            chomp $theDir;
-            if (! -d $theDir) {
-               print STDERR "The link '$theLink' does not point to a proper directory '$theDir' -- exiting\n";
-               exit 1
-            }      
             $$curHash{""} = { $TEXT => $text, $ORIG => $curEntry, $DEVICE_DIR => $theDir }
          }
       }
@@ -176,7 +184,6 @@ sub slurpUsbDevices {
          print STDERR "Cannot parse entry '$curEntry' -- discarding entry\n"
       }
    }
-   closedir($dh);
    return $root
 }
 
@@ -188,23 +195,22 @@ sub slurpBlockDevices {
    my($where) = @_;
    my $blockDevHash = {}; # list block devices by their path under "devices"
    #
-   # So let's open the directory
+   # So let's open the directory and slurp the entries
    #
-   my $success = opendir(my $dh,$where);
-   if (!$success) {
-      print STDERR "Could not open directory '$where' -- exiting: $!\n";
-      exit 1
+   my @entries;
+   {
+      my $success = opendir(my $dh,$where);
+      if (!$success) {
+         print STDERR "Could not open directory '$where' -- exiting: $!\n";
+         exit 1  
+      }
+      @entries = grep { /^sd[a-z]$/ } readdir($dh);
+      closedir($dh)
    }
    #
    # Read directory entries one by one
    #
-   while (my $curEntry = readdir($dh)) {
-      #
-      # Skip the directory entries and anything that isn't named like a SCSI block device
-      #
-      if ($curEntry eq "." || $curEntry eq ".." || !($curEntry =~ /^sd[a-z]$/)) {
-         next      
-      }
+   for my $curEntry (@entries) {
       #
       # So this is actually a link to a directory, which we now get using "readlink"
       #
@@ -222,10 +228,73 @@ sub slurpBlockDevices {
       if ($$blockDevHash{$theDir}) {
          print STDERR "The path '$theDir' has already been seen! Previously for '" . $$blockDevHash{$theDir} . "' and now for '${curEntry}' -- exiting\n";
       }
-      $$blockDevHash{$theDir} = $curEntry
+      #
+      # Add to the hash a mapping like "/sys/devices/pci0000:00/0000:00:02.1/usb1/1-2/1-2:1.0/host9/target9:0:0/9:0:0:0/block/sde" --> { $SD_DEVICE --> "sde" }
+      #
+      my $blockDevSubHash     = { $SD_DEVICE => $curEntry };
+      $$blockDevHash{$theDir} = $blockDevSubHash;
+      #
+      # If that device has partitions, these can be found underneath "theDir"
+      #
+      my @partitions;
+      {
+         my $success = opendir(my $dh,$theDir);
+         if (!$success) {
+            print STDERR "Could not open directory '$theDir' -- exiting: $!\n";
+            exit 1
+         }
+         @partitions = grep { /^${curEntry}\d+$/ } readdir($dh);
+         closedir($dh)
+      }
+      for my $partition (@partitions) {
+         my $size = readSizeFile("$theDir/$partition/size");
+         $$blockDevSubHash{$partition} = { $DEVICE_SIZE => $size } 
+      }
    }
-   closedir($dh);
    return $blockDevHash
+}
+
+# ===
+# Read the file which gives the partition size in blocks; returns a human-readable size string or undef
+# ===
+
+sub readSizeFile {
+   my ($sizeFile) = @_;
+   my $size;
+   if (-f $sizeFile) {
+      my $sizeInBlocks = read_file($sizeFile); chomp $sizeInBlocks;
+      if ($sizeInBlocks =~ /^\d+$/) {
+         my $sizeInByte = $BLOCK_SIZE * $sizeInBlocks;
+         $size = fromByte($sizeInByte)
+      }      
+   }
+   return $size
+}
+
+# ===
+# Generate human-readable value from "bytes"
+# ===
+
+sub fromByte {
+   my($byte) = @_;
+   $byte = $byte * 1;
+   if ($byte < 1024) {
+      return sprintf("%d Byte",$byte);
+   }   
+   my $kib = $byte / 1024;
+   if ($kib < 1024) {
+      return sprintf("%.2f KiB",$kib);
+   }
+   my $mib = $kib / 1024;
+   if ($mib < 1024) {
+      return sprintf("%.2f MiB",$mib);
+   }
+   my $gib = $mib / 1024;
+   if ($gib < 1024) {
+      return sprintf("%.2f GiB",$gib);
+   }
+   my $tib = $gib / 1024;
+   return sprintf("%.2f TiB",$tib);
 }
 
 # === 
@@ -238,12 +307,14 @@ sub printUsbTreeEntries {
       #
       # For prettyprinting: Add a separator when the next bus listing starts
       #
-      if ($curKey =~ /^bus:(\d+)$/) {
-         $curBus = $1 * 1;
-         if ($curBus != $prevBus) {
-            print "\n--\n\n";
-            $prevBus = $curBus
-         }         
+      if (0) {
+         if ($curKey =~ /^bus:(\d+)$/) {
+            $curBus = $1 * 1;
+            if ($curBus != $prevBus) {
+               print "\n--\n\n";
+               $prevBus = $curBus
+            }         
+         }
       }
       #
       # If the key is "" this is an actual examinable entry; otherwise do a recursive call
@@ -269,7 +340,7 @@ sub buildOutputText {
    my $originalString = $$textHash{$ORIG};
    my $text           = $$textHash{$TEXT};
    my $theDir         = $$textHash{$DEVICE_DIR};
-   my $blockDev       = $$textHash{$SD_DEVICE};
+   my $blockDevDesc   = $$textHash{$SD_DEVICE_DESC};
    my $blockDevDir    = $$textHash{$SD_DEVICE_DIR};
    #
    # There may be additional info in "theDir"
@@ -303,10 +374,23 @@ sub buildOutputText {
       if ($manuf)     { $textOut .= "${sep}manufacturer='$manuf'"; $sep = ", " }
       if ($serial)    { $textOut .= "${sep}serial='$serial'"; $sep = ", " }
    }
-   if ($blockDev) {
+   if ($blockDevDesc) {
+      my $blockDevice = $$blockDevDesc{$SD_DEVICE};
       $textOut .= "\n";
       $textOut .= $indent;
-      $textOut .= "The block device '$blockDev' with device path '$blockDevDir' matches this USB device path"
+      $textOut .= "Block device '$blockDevice' with device path '$blockDevDir' matches this USB device path";
+      for my $partition (sort keys %$blockDevDesc) {
+         if ($partition =~ /^${blockDevice}\d+$/) {
+            $textOut .= "\n"; 
+            $textOut .= $indent;
+            $textOut .= $indent;
+            $textOut .= "...has partition '$partition'";
+            my $perPartitionHash = $$blockDevDesc{$partition};
+            if ($$perPartitionHash{$DEVICE_SIZE}) {
+               $textOut .= " with size $$perPartitionHash{$DEVICE_SIZE}"
+            }
+         }
+      }
    } 
    return $textOut
 }
@@ -350,15 +434,18 @@ sub assignBlockDevicesToUsbTreeEntries {
       if (exists $$textHash{$DEVICE_DIR}) {
          my $devDir = $$textHash{$DEVICE_DIR};
          my $matched = 0;
+         # Check through the keys of "blockDevHash" to see whether any of those keys (which are actually the paths to 
+         # the respective directories under /sys/devices) has the "devDir" as prefix. Check that there is only at
+         # most one match.
          for my $blockDevDir (keys %$blockDevHash) {
-            if ($blockDevDir =~ /^$devDir.*$/) {
+            if ($blockDevDir =~ /^${devDir}.*$/) {
                if ($matched) {
-                  print STDERR "Duplicate match for '$devDir': matches '$blockDevDir' and $$textHash{$SD_DEVICE_DIR} -- exiting!\n";
+                  print STDERR "Duplicate match for '$devDir': matches '$blockDevDir' and earlier '$$textHash{$SD_DEVICE_DIR}' -- exiting!\n";
                   exit 1
                }
                $matched = 1;
-               $$textHash{$SD_DEVICE}     = $$blockDevHash{$blockDevDir};
-               $$textHash{$SD_DEVICE_DIR} = $blockDevDir;
+               $$textHash{$SD_DEVICE_DESC} = $$blockDevHash{$blockDevDir};
+               $$textHash{$SD_DEVICE_DIR}  = $blockDevDir;
                delete $$blockDevHash{$blockDevDir} 
             }
          }
