@@ -20,6 +20,11 @@ by something on the USB bus without grepping the kernel log.
 
 Hence this script. 
 
+Problems and Bugs
+-----------------
+
+None so far. Ready for general usage.
+
 See also
 --------
 
