@@ -91,3 +91,31 @@ device providing for `/dev/sdd`:
     bus 4 -> port 2 -> config 1 -> interface 0 [4-2:1.0] [points to dir '/sys/devices/pci0000:00/0000:00:04.0/usb4/4-2/4-2:1.0']
     bus 4 -> port 2 -> config 1 -> interface 1 [4-2:1.1] [points to dir '/sys/devices/pci0000:00/0000:00:04.0/usb4/4-2/4-2:1.1']
 
+
+License
+-------
+
+Distributed under the MIT License, see http://opensource.org/licenses/MIT
+
+Copyright (c) 2013<br>
+David Tonhofer<br>
+14, rue Aldringen<br>
+L-1118 Luxembourg<br>
+ 
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+ 
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+ 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
