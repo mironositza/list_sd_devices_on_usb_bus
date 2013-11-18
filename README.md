@@ -30,14 +30,22 @@ See also
 
 See also these utilities which should come with your distribution:
 
-  * `lsusb`
-  * `usbview`
+  * `lsusb(8)` - list USB devices
+  * `usbview(8)` - USB topology and device viewer
+  * `blkid(8)` - locate/print block device attributes (command-line interface to working with the `libblkid(3)` library)
+  * The directory `/dev/disk/by-path/` which helpfully lists the USB disks in the form or symlinks to device nodes
+  * `lshw(1)` - list hardware
+  * `udisks(1)` - simple command line client for the org.freedesktop.UDisks system bus service
 
 As well as:
 
   * http://www.linux-usb.org/FAQ.html
-  * https://www.kernel.org/doc/htmldocs/usb/API-struct-usb-device.html
-  
+  * http://www.kernel.org/doc/htmldocs/usb/API-struct-usb-device.html
+  * http://en.wikipedia.org/wiki/Sysfs
+  * http://en.wikipedia.org/wiki/Udev
+  * http://stackoverflow.com/questions/15830048/bash-search-for-usb-storage-devices-output-location
+  * http://stackoverflow.com/questions/13224509/linux-ubuntu-safely-remove-usb-flash-disk-via-command-line
+
 Example output
 --------------
 
@@ -69,8 +77,6 @@ and running `lsusb` without any option yields:
     Bus 004 Device 001: ID 1d6b:0001 Linux Foundation 1.1 root hub
 
 Note that I have no idea where `lsusb` gets its "device 5 on bus 1" from. 
-
-Anyway...
 
 Running the `list_sd_devices_on_usb_bus.pl` script yields something both harder to read and more informative, 
 including the list of the devices partitions:
