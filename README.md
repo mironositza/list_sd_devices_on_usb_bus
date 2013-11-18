@@ -23,7 +23,7 @@ Hence this script.
 Problems and Bugs
 -----------------
 
-None so far. Ready for general usage.
+None so far. Ready for general usage. But probably a bit too complicated. 
 
 See also
 --------
